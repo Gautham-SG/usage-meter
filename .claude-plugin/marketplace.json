@@ -1,0 +1,5 @@
+{
+  "name": "usage-meter",
+  "owner": { "name": "Gautham-SG" },
+  "plugins": [{ "name": "usage-meter", "source": "./" }]
+}
