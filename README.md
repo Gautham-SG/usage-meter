@@ -22,4 +22,6 @@ claude plugin install usage-meter --marketplace Gautham-SG/usage-meter
 
 In the desktop app, where `/plugin` does not run: click + next to the prompt box, then Plugins, Add marketplace with `Gautham-SG/usage-meter`, then Add plugin.
 
-This repository is private, so you need access to it and GitHub set up on your computer to install the mod.
+## License
+
+MIT. Change it however you like.
