@@ -158,10 +158,18 @@ const capsule = (p: Pill, x: number, w: number, i: number, isBusy: boolean) => {
   <text x="${x + w - 15}" y="${base}" text-anchor="end" class="val">${p.value}</text>`
 }
 
-const capsules = (pills: Pill[], isBusy: boolean) => {
+// VS Code's band is a small framed box, not the measured desktop slot: crop to the capsules, shrink, no backdrop.
+const CROP_Y = TOP - 2
+const CROP_H = TALL + 4
+const SHRINK = 0.8
+// Pixels per character cell of the panel's code font, to turn its column count into a width.
+const CELL_PX = 9.7
+const PANEL_PAD = 14
+
+const capsules = (pills: Pill[], isBusy: boolean, isCropped = false, width = W) => {
   const meters = pills.filter(p => p.pct !== undefined).length
   const hasCost = meters < pills.length
-  const room = W - 2 - (hasCost ? COST_W + GAP : 0) - GAP * Math.max(0, meters - 1)
+  const room = width - 2 - (hasCost ? COST_W + GAP : 0) - GAP * Math.max(0, meters - 1)
   const mw = room / Math.max(1, meters)
   let x = 0
   const body = pills
@@ -172,7 +180,10 @@ const capsules = (pills: Pill[], isBusy: boolean) => {
       return out
     })
     .join('')
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${BLEED_W}" height="${BLEED_H}" viewBox="0 0 ${BLEED_W} ${BLEED_H}" style="display:block">
+  const size = isCropped
+    ? `width="${width * SHRINK}" height="${CROP_H * SHRINK}" viewBox="0 ${CROP_Y} ${width} ${CROP_H}"`
+    : `width="${BLEED_W}" height="${BLEED_H}" viewBox="0 0 ${BLEED_W} ${BLEED_H}"`
+  return `<svg xmlns="http://www.w3.org/2000/svg" ${size} style="display:block">
   <defs>
     <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffffff" stop-opacity="0.13"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
@@ -187,7 +198,7 @@ const capsules = (pills: Pill[], isBusy: boolean) => {
       .note { font-size: 10.5px; fill: #ffffff; fill-opacity: 0.62; }
     </style>
   </defs>
-  <rect width="${BLEED_W}" height="${BLEED_H}" fill="${PAGE}"/>
+  ${isCropped ? '' : `<rect width="${BLEED_W}" height="${BLEED_H}" fill="${PAGE}"/>`}
   ${body}
 </svg>`
 }
@@ -236,10 +247,22 @@ export const register: Register = on => {
     // One beat: quick while the terminal band animates; otherwise a redraw about
     // every minute for the countdowns. The card animates itself between redraws.
     let idle = 0
+    let sinceRead = 0
     ticker?.cancel()
     ticker = $.clock.every(110, async () => {
       const now = await $.clock.now()
       idle += 1
+      sinceRead += 1
+      // session.measure only fires after a turn, so re-read the figures while one runs (about 5s) and otherwise every minute.
+      if (sinceRead >= (isRunning ? 45 : 545)) {
+        sinceRead = 0
+        const latest = toSnapshot(await $.session.usage())
+        const was = await read($, snapshot)
+        if (JSON.stringify(latest) !== JSON.stringify(was)) {
+          take(latest, now)
+          await update($, snapshot, () => latest)
+        }
+      }
       const isMoving =
         drawnOn === 'terminal' && (isRunning || now - changedAt < TWEEN_MS + 150)
       if (isMoving || idle >= 545) {
@@ -314,6 +337,23 @@ export const register: Register = on => {
       }
       if (s.costUsd !== null) {
         pills.push({ key: 'cost', label: 'Cost', value: money(s.costUsd), note: '' })
+      }
+
+      if (drawnOn === 'vscode') {
+        const cols = (e as any).viewport?.columns
+        const px = cols ? Math.max(420, Math.min(1100, Math.round(cols * CELL_PX) - PANEL_PAD)) : 640
+        const card = px / SHRINK
+        return (
+          <Box height={2}>
+            <Svg
+              source={capsules(pills, isRunning, true, card)}
+              alt={`Claude usage. ${pills.map(p => `${p.label} ${p.value}`).join('. ')}.`}
+              width={px}
+              height={CROP_H * SHRINK}
+              isInteractive={true}
+            />
+          </Box>
+        )
       }
 
       return (
